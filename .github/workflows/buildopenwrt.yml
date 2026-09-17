@@ -1,4 +1,4 @@
-name: Build OpenWrt v21.02.7
+name: Build-OpenWrt
 
 on:
   workflow_dispatch:
@@ -37,12 +37,12 @@ jobs:
         sudo -E apt-get autoremove --purge -y
         sudo -E apt-get clean
 
-    - name: Clone OpenWrt v21.02.7
+    - name: Clone OpenWrt
       run: |
         git clone https://github.com/openwrt/openwrt.git
         cd openwrt
         git pull
-        git checkout v21.02.7
+        git checkout v25.12.5
 
     - name: Cache dl and build_dir
       uses: actions/cache@v4
@@ -52,9 +52,9 @@ jobs:
           openwrt/staging_dir
         # Cache dikunci berdasarkan versi tag OpenWrt. 
         # Jika Anda mengubah isi file .config Anda, cache akan tetap dipakai (restore), namun jika ada update fungsionalitas, cache akan diperbarui otomatis saat build selesai.
-        key: ${{ runner.os }}-openwrt-21.02.7-${{ hashFiles('**/config', '**/.config') }}
+        key: ${{ runner.os }}-openwrt-25.12.5-${{ hashFiles('**/config', '**/.config') }}
         restore-keys: |
-          ${{ runner.os }}-openwrt-21.02.7-
+          ${{ runner.os }}-openwrt-25.12.5-
 
     - name: Update feeds
       run: |
@@ -62,14 +62,12 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
-    - name: Apply custom files (Overwrite Config, DTS, MK, LED & Network)
+    - name: Apply custom files
       run: |
         set -e
         cp custom/.config openwrt/.config
         cp custom/mt7621.mk openwrt/target/linux/ramips/image/mt7621.mk
-        cp custom/mt7621_zte_e8820v2.dts openwrt/target/linux/ramips/dts/mt7621_zte_e8820v2.dts
-        cp custom/01_leds openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/01_leds
-        cp custom/02_network openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/02_network
+        cp custom/mt7621_zte_e8820v2.dts openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
         
         cd openwrt
         make defconfig
@@ -104,7 +102,7 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v21.02.7-${{ github.run_number }}
+        tag_name: OpenWrt-${{ github.run_number }}
         name: OpenWrt ZTE E8820v2 Build ${{ github.run_number }}
         draft: false
         prerelease: false
