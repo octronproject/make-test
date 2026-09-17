@@ -103,9 +103,12 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: OpenWrt-${{ github.run_number }}
-        name: OpenWrt ZTE E8820v2 Build ${{ github.run_number }}
+        name: OpenWrt Build ${{ github.run_number }}
         draft: false
         prerelease: false
-        files: openwrt/bin/targets/**/**/*
+        files: |
+          openwrt/bin/targets/ramips/mt7621/*-sysupgrade.bin
+          openwrt/bin/targets/ramips/mt7621/*-factory.bin
+          openwrt/bin/targets/ramips/mt7621/sha256sums
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
