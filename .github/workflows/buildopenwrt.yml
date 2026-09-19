@@ -3,18 +3,10 @@ name: Build OpenWrt ZTE-E8820V2
 on:
   workflow_dispatch:
   
-permissions:
-  contents: write
-  
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     
-    # Prevent parallel builds
-    concurrency:
-      group: build-${{ github.ref }}
-      cancel-in-progress: false
-
     steps:
     - name: Checkout this repo
       uses: actions/checkout@v4
@@ -25,78 +17,83 @@ jobs:
         echo "BUILD_DATE=$(date +'%Y%m%d-%H%M')" >> $GITHUB_ENV
         echo "BUILD_TIME=$(date +'%Y-%m-%d %H:%M:%S')" >> $GITHUB_ENV
         
-    - name: Clean & Install prerequisites
+    - name: Free Disk Space & Install Dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
       run: |
         sudo docker rmi $(docker image ls -q) 2>/dev/null || true
         sudo rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android /opt/ghc
         sudo -E apt-get -y purge azure-cli google-cloud-cli google-chrome-stable firefox powershell dotnet-sdk*
         sudo -E apt-get update
         sudo -E apt-get -y install build-essential clang flex bison g++ gawk \
-        gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
-        python3-setuptools rsync swig unzip zlib1g-dev file wget ccache
+        gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
+        python3-setuptools rsync swig unzip zlib1g-dev file wget
         sudo -E apt-get autoremove --purge -y
         sudo -E apt-get clean
         
-    - name: Clone OpenWrt v21.02.7
+    - name: Clone OpenWrt Source & Checkout Tag
       run: |
-        git clone --branch v21.02.7 --depth 1 \
-        https://github.com/openwrt/openwrt.git openwrt
-
-    - name: Update feeds
-      run: |
-        set -eux
+        git clone https://github.com/openwrt/openwrt.git
         cd openwrt
+        git pull
+        git checkout v21.02.7
 
-        ./scripts/feeds clean
-        ./scripts/feeds update -a
-
-        # Ensure feeds match the v21.02 release series
-        for feed in packages luci routing telephony; do
-        if [ -d "feeds/$feed/.git" ]; then
-        git -C "feeds/$feed" fetch --depth 1 origin openwrt-21.02
-        git -C "feeds/$feed" checkout -B openwrt-21.02 origin/openwrt-21.02
-        fi
-        done
-
-        ./scripts/feeds install -a
-        
-    - name: Cache dl and build_dir
+    - name: Cache OpenWrt DL and Staging Dir
       uses: actions/cache@v4
       with:
         path: |
           openwrt/dl
-          #openwrt/staging_dir
+          openwrt/staging_dir
+        # Cache dikunci berdasarkan versi tag OpenWrt. 
+        # Jika Anda mengubah isi file .config Anda, cache akan tetap dipakai (restore), namun jika ada update fungsionalitas, cache akan diperbarui otomatis saat build selesai.
         key: ${{ runner.os }}-openwrt-21.02.7-${{ hashFiles('**/config', '**/.config') }}
         restore-keys: |
           ${{ runner.os }}-openwrt-21.02.7-
-          
-    #name: Apply Feed
-      #run: |
-        #set -e
-        #cp custom/feeds.conf.default openwrt/feeds.conf.default
-        
-    #name: Update feeds
-      #run: |
-        #cd openwrt
-        #./scripts/feeds update -a
-        #./scripts/feeds install -a
-          
-    - name: Apply custom files
+
+    - name: Update and Install Feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Apply Hardmod Fixes (Overwrite DTS & MK)
       run: |
         set -e
-        cp custom/.config openwrt/.config
-        cp custom/mt7621.mk openwrt/target/linux/ramips/image/mt7621.mk
-        cp custom/mt7621_zte_e8820v2.dts openwrt/target/linux/ramips/dts/mt7621_zte_e8820v2.dts
-        cp custom/01_leds openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/01_leds
-        cp custom/02_network openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/02_network
-
-    - name: Clean OpenWrt build state
-      run: |
-        rm -rf openwrt/build_dir
-        rm -rf openwrt/staging_dir
-        rm -rf openwrt/tmp
+        if [ -f "patch-custom/mt7621_zte_e8820v2.dts" ]; then
+          cp -f patch-custom/mt7621_zte_e8820v2.dts openwrt/target/linux/ramips/dts/
+          echo "DTS successfully copied!"
+        else
+          find patch-custom/ -name "*.dts" -exec cp -f {} openwrt/target/linux/ramips/dts/mt7621_zte_e8820v2.dts \;
+          echo "DTS files automatically applied!"
+        fi
         
+        if [ -f "patch-custom/mt7621.mk" ]; then
+          cp -f patch-custom/mt7621.mk openwrt/target/linux/ramips/image/
+          echo "Makefile (mt7621.mk) successfully replaced!"
+        fi
+        
+        if [ -f "patch-custom/01_leds" ]; then
+          cp -f patch-custom/01_leds openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/
+          echo "Makefile (01_leds) successfully replaced!"
+        fi
+
+        if [ -f "patch-custom/02_network" ]; then
+          cp -f patch-custom/02_network openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/
+          echo "Makefile (02_network) successfully replaced!"
+        fi
+          
+    - name: Generate Config file
+      run: |
         cd openwrt
+        if [ -f "../.config" ]; then
+          cp -f ../.config .config
+          echo "Berhasil menyalin .config kustom!"
+        else
+          echo "CONFIG_TARGET_ramips=y" > .config
+          echo "CONFIG_TARGET_ramips_mt7621=y" >> .config
+          echo "CONFIG_TARGET_ramips_mt7621_DEVICE_mt7621_zte_e8820v2=y" >> .config
+        fi
+        
         make defconfig
         
     - name: Download Package Source (Pre-download)
@@ -105,21 +102,13 @@ jobs:
         make download -j$(nproc)
         find dl -size 0 -exec rm -f {} \;
         
-    - name: Build firmware
+    - name: Compile Toolchain & Firmware (World)
       run: |
         cd openwrt
-        JOBS=$(nproc || echo 2)
-        echo "Using $JOBS parallel jobs"
-        export CCACHE_DIR="$HOME/.ccache"
-        mkdir -p "$CCACHE_DIR"
-        echo "Clearing old ccache..."
-        ccache -C || true
-        ccache -M 2G || true
-        time make -j"$(nproc)" world || make -j1 V=s world
-        echo "✓ Build finished"
+        make -j$(nproc) world || make -j1 V=s world
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: OpenWrt_ZTE_E8820V2_${{ env.BUILD_DATE }}
+        name: OpenWrt_25.12.5_Mi_Router_3G_v1_SPI_${{ env.BUILD_DATE }}
         path: openwrt/bin
