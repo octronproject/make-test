@@ -118,16 +118,8 @@ jobs:
         time make -j"$(nproc)" world || make -j1 V=s world
         echo "✓ Build finished"
 
-    - name: Organize Files
-      id: organize
-      run: |
-        cd openwrt/bin/**
-        echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
-
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
         name: OpenWrt_ZTE_E8820V2_${{ env.BUILD_DATE }}
-        path: ${{ env.FIRMWARE_PATH }}/*
-    
-        
+        path: openwrt/bin
