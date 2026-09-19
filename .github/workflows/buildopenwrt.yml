@@ -121,7 +121,7 @@ jobs:
     - name: Organize Files
       id: organize
       run: |
-        cd openwrt/bin/targets/ramips/mt7621
+        cd openwrt/bin/**
         echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
 
     - name: Upload Artifact
