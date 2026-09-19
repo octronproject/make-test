@@ -8,7 +8,7 @@ permissions:
   
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     
     # Prevent parallel builds
     concurrency:
@@ -49,15 +49,15 @@ jobs:
       with:
         path: |
           openwrt/dl
-          openwrt/staging_dir
+          #openwrt/staging_dir
         key: ${{ runner.os }}-openwrt-21.02.7-${{ hashFiles('**/config', '**/.config') }}
         restore-keys: |
           ${{ runner.os }}-openwrt-21.02.7-
           
-    - name: Apply Feed
-      run: |
-        set -e
-        cp custom/feeds.conf.default openwrt/feeds.conf.default
+    #name: Apply Feed
+      #run: |
+        #set -e
+        #cp custom/feeds.conf.default openwrt/feeds.conf.default
         
     - name: Update feeds
       run: |
