@@ -58,7 +58,12 @@ jobs:
         
     - name: Modify Squeezelite Makefile
       run: |
-        sed -i 's/+SQUEEZELITE_WMA_ALAC:/@SQUEEZELITE_WMA_ALAC:/g' feeds/packages/sound/squeezelite/Makefile
+        cd x-wrt
+        test -f feeds/packages/sound/squeezelite/Makefile
+
+        sed -i \
+        's/+SQUEEZELITE_WMA_ALAC:/@SQUEEZELITE_WMA_ALAC:/g' \
+        feeds/packages/sound/squeezelite/Makefile
 
     - name: Apply Hardmod Fixes (Overwrite DTS & MK)
       run: |
