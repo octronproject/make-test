@@ -1,4 +1,5 @@
 #include "mt7621.dtsi"
+
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
 / {
