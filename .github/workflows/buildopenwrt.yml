@@ -36,7 +36,7 @@ jobs:
         git clone https://github.com/x-wrt/x-wrt.git
         cd x-wrt
         git pull
-        git checkout 26.04
+        git checkout 26.04_b202609161234
 
     - name: Cache x-wrt DL and Staging Dir
       uses: actions/cache@v4
