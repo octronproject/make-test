@@ -1,4 +1,4 @@
-name: Build OpenWrt ZTE-E8820V2
+name: Build x-wrt ZTE-E8820V2
 
 on:
   workflow_dispatch:
@@ -31,28 +31,28 @@ jobs:
         sudo -E apt-get autoremove --purge -y
         sudo -E apt-get clean
         
-    - name: Clone OpenWrt Source & Checkout Tag
+    - name: Clone x-wrt Source & Checkout Tag
       run: |
-        git clone https://github.com/openwrt/openwrt.git
-        cd openwrt
+        git clone https://github.com/x-wrt/x-wrt.git
+        cd x-wrt
         git pull
-        git checkout v21.02.7
+        git checkout 26.04
 
-    - name: Cache OpenWrt DL and Staging Dir
+    - name: Cache x-wrt DL and Staging Dir
       uses: actions/cache@v4
       with:
         path: |
-          openwrt/dl
-          openwrt/staging_dir
-        # Cache dikunci berdasarkan versi tag OpenWrt. 
+          x-wrt/dl
+          x-wrt/staging_dir
+        # Cache dikunci berdasarkan versi tag. 
         # Jika Anda mengubah isi file .config Anda, cache akan tetap dipakai (restore), namun jika ada update fungsionalitas, cache akan diperbarui otomatis saat build selesai.
-        key: ${{ runner.os }}-openwrt-21.02.7-${{ hashFiles('**/config', '**/.config') }}
+        key: ${{ runner.os }}-x-wrt-26.04-${{ hashFiles('**/config', '**/.config') }}
         restore-keys: |
-          ${{ runner.os }}-openwrt-21.02.7-
+          ${{ runner.os }}-x-wrt-26.04-
 
     - name: Update and Install Feeds
       run: |
-        cd openwrt
+        cd x-wrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
@@ -60,31 +60,31 @@ jobs:
       run: |
         set -e
         if [ -f "patch-custom/mt7621_zte_e8820v2.dts" ]; then
-          cp -f patch-custom/mt7621_zte_e8820v2.dts openwrt/target/linux/ramips/dts/
+          cp -f patch-custom/mt7621_zte_e8820v2.dts x-wrt/target/linux/ramips/dts/
           echo "DTS successfully copied!"
         else
-          find patch-custom/ -name "*.dts" -exec cp -f {} openwrt/target/linux/ramips/dts/mt7621_zte_e8820v2.dts \;
+          find patch-custom/ -name "*.dts" -exec cp -f {} x-wrt/target/linux/ramips/dts/mt7621_zte_e8820v2.dts \;
           echo "DTS files automatically applied!"
         fi
         
         if [ -f "patch-custom/mt7621.mk" ]; then
-          cp -f patch-custom/mt7621.mk openwrt/target/linux/ramips/image/
+          cp -f patch-custom/mt7621.mk x-wrt/target/linux/ramips/image/
           echo "Makefile (mt7621.mk) successfully replaced!"
         fi
         
         if [ -f "patch-custom/01_leds" ]; then
-          cp -f patch-custom/01_leds openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/
+          cp -f patch-custom/01_leds x-wrt/target/linux/ramips/mt7621/base-files/etc/board.d/
           echo "Makefile (01_leds) successfully replaced!"
         fi
 
         if [ -f "patch-custom/02_network" ]; then
-          cp -f patch-custom/02_network openwrt/target/linux/ramips/mt7621/base-files/etc/board.d/
+          cp -f patch-custom/02_network x-wrt/target/linux/ramips/mt7621/base-files/etc/board.d/
           echo "Makefile (02_network) successfully replaced!"
         fi
           
     - name: Generate Config file
       run: |
-        cd openwrt
+        cd x-wrt
         if [ -f "../.config" ]; then
           cp -f ../.config .config
           echo "Berhasil menyalin .config kustom!"
@@ -98,17 +98,17 @@ jobs:
         
     - name: Download Package Source (Pre-download)
       run: |
-        cd openwrt
+        cd x-wrt
         make download -j$(nproc)
         find dl -size 0 -exec rm -f {} \;
         
     - name: Compile Toolchain & Firmware (World)
       run: |
-        cd openwrt
+        cd x-wrt
         make -j$(nproc) world || make -j1 V=s world
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: OpenWrt_25.12.5_Mi_Router_3G_v1_SPI_${{ env.BUILD_DATE }}
-        path: openwrt/bin
+        name: x-wrt_26.04_ZTE_E8820v2_${{ env.BUILD_DATE }}
+        path: x-wrt/bin
