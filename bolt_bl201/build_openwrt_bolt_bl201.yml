@@ -91,8 +91,6 @@ jobs:
         if [ -f "../.config" ]; then
         cp -f ../.config .config
         echo "Berhasil menyalin .config kustom!"
-        else
-        echo "No custom .config found; using OpenWrt defaults."
         fi
 
         make defconfig
