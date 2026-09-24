@@ -90,7 +90,7 @@ jobs:
         if [ -f "../.config" ]; then
           cp -f ../.config .config
           echo "Berhasil menyalin .config kustom!"
-        else
+      #  else
         #  echo "CONFIG_TARGET_ramips=y" > .config
          # echo "CONFIG_TARGET_ramips_mt7620=y" >> .config
         #  echo "CONFIG_TARGET_ramips_mt7620_DEVICE_bolt_bl201=y" >> .config
