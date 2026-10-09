@@ -59,14 +59,17 @@ jobs:
         cd openwrt
         ./scripts/feeds update -a
         ./scripts/feeds install -a
-
+        
     - name: Apply custom files (Overwrite Config, DTS, MK)
       run: |
         set -e
         cp mir3g/.config openwrt/.config
         cp mir3g/mt7621.mk openwrt/target/linux/ramips/image/mt7621.mk
         cp mir3g/mt7621_xiaomi_mi-router-3g.dts openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
-        
+    
+        # Add this line to disable problematic _hashlib
+        echo "CONFIG_PYTHON3_HASHLIB=n" >> openwrt/.config
+    
         cd openwrt
         make defconfig
         
