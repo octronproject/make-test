@@ -37,7 +37,7 @@ jobs:
         sudo -E apt-get autoremove --purge -y
         sudo -E apt-get clean
 
-        - name: Clone OpenWrt v21.02.7
+    - name: Clone OpenWrt v21.02.7
       run: |
         git clone https://github.com/openwrt/openwrt.git
         cd openwrt
