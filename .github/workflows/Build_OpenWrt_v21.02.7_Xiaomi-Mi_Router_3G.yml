@@ -50,8 +50,6 @@ jobs:
         path: |
           openwrt/dl
           openwrt/staging_dir
-        # Cache dikunci berdasarkan versi tag OpenWrt. 
-        # Jika Anda mengubah isi file .config Anda, cache akan tetap dipakai (restore), namun jika ada update fungsionalitas, cache akan diperbarui otomatis saat build selesai.
         key: ${{ runner.os }}-openwrt-21.02.7-${{ hashFiles('**/config', '**/.config') }}
         restore-keys: |
           ${{ runner.os }}-openwrt-21.02.7-
@@ -65,9 +63,9 @@ jobs:
     - name: Apply custom files (Overwrite Config, DTS, MK)
       run: |
         set -e
-        cp custom/.config openwrt/.config
-        cp custom/mt7621.mk openwrt/target/linux/ramips/image/mt7621.mk
-        cp custom/mt7621_xiaomi_mi-router-3g.dts openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
+        cp mir3g/.config openwrt/.config
+        cp mir3g/mt7621.mk openwrt/target/linux/ramips/image/mt7621.mk
+        cp mir3g/mt7621_xiaomi_mi-router-3g.dts openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
         
         cd openwrt
         make defconfig
