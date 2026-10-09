@@ -89,6 +89,7 @@ jobs:
         echo "Clearing old ccache..."
         ccache -C || true
         ccache -M 2G || true
+        export PIP_BREAK_SYSTEM_PACKAGES=1
         time make -j"$JOBS" world || make -j1 V=s world
         echo "✓ Build finished"
 
