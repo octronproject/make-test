@@ -36,3 +36,51 @@ jobs:
         python3-distutils python3-setuptools rsync swig unzip zlib1g-dev file wget ccache
         sudo -E apt-get autoremove --purge -y
         sudo -E apt-get clean
+
+        - name: Clone OpenWrt v21.02.7
+      run: |
+        git clone https://github.com/openwrt/openwrt.git
+        cd openwrt
+        git pull
+        git checkout v21.02.7
+
+    - name: Update feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+        
+    - name: Apply custom files (Overwrite Config, DTS, MK)
+      run: |
+        set -e
+        cp test/.config openwrt/.config
+        cp test/mt7621.mk openwrt/target/linux/ramips/image/mt7621.mk
+        cp test/mt7621_xiaomi_mi-router-3g-v1.dts openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g-v1.dts
+        cd openwrt
+        make defconfig
+        
+    - name: Download Package Source (Pre-download)
+      run: |
+        cd openwrt
+        make download -j$(nproc)
+        find dl -size 0 -exec rm -f {} \;
+
+    - name: Build firmware
+      run: |
+        cd openwrt
+        JOBS=$(nproc || echo 2)
+        echo "Using $JOBS parallel jobs"
+        export CCACHE_DIR="$HOME/.ccache"
+        mkdir -p "$CCACHE_DIR"
+        echo "Clearing old ccache..."
+        ccache -C || true
+        ccache -M 2G || true
+        export PIP_BREAK_SYSTEM_PACKAGES=1
+        time make -j"$JOBS" world || make -j1 V=s world
+        echo "✓ Build finished"
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenWrt_21.02.7_Xiaomi_Mi_Router_3G_v1_${{ env.BUILD_DATE }}
+        path: openwrt/bin
