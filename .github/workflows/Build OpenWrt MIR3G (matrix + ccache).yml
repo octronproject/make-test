@@ -56,7 +56,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             build-essential clang flex g++ gawk gcc-multilib \
-            git gettext libncurses5-dev libssl-dev python3-pip python3-dev \
+            git gettext libncurses5-dev libncurses-dev libssl-dev python3-pip python3-dev \
             python3-setuptools rsync unzip zlib1g-dev swig wget file time \
             ca-certificates ccache
 
@@ -68,6 +68,10 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+
+          # Konfigurasi repositori aman untuk Git di dalam kontainer Docker
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE/openwrt"
 
           export PATH="/usr/lib/ccache:${PATH}"
 
@@ -82,15 +86,40 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+          # Menyalin berkas konfigurasi kustom Anda
           cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/.config" "${GITHUB_WORKSPACE}/openwrt/.config"
           cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/mt7621.mk" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/image/mt7621.mk"
           cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/mt7621_xiaomi_mi-router-3g.dts" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts"
+
+          # ==========================================
+          # BLOK PERBAIKAN OTOMATIS BERDASARKAN VERSI
+          # ==========================================
+          
+          # Perbaikan Khusus Versi 23.05.6 (Hapus paket NFS bentrok karena ksmbd)
+          if [ "${{ matrix.version }}" = "23.05.6" ]; then
+            sed -i 's/CONFIG_PACKAGE_kmod-fs-nfs-common=y/# CONFIG_PACKAGE_kmod-fs-nfs-common is not set/' .config
+            sed -i 's/CONFIG_PACKAGE_kmod-fs-nfs-common-rpcsec=y/# CONFIG_PACKAGE_kmod-fs-nfs-common-rpcsec is not set/' .config
+            sed -i 's/CONFIG_PACKAGE_kmod-fs-nfsd=y/# CONFIG_PACKAGE_kmod-fs-nfsd is not set/' .config
+          fi
+
+          # Perbaikan Khusus Versi Lama (21.02 dan 22.03) untuk melewati error modul Python lama
+          if [ "${{ matrix.version }}" = "21.02.7" ] || [ "${{ matrix.version }}" = "22.03.6" ]; then
+            sed -i 's/CONFIG_PACKAGE_python3=y/# CONFIG_PACKAGE_python3 is not set/' .config
+            sed -i 's/CONFIG_PACKAGE_python3-light=y/# CONFIG_PACKAGE_python3-light is not set/' .config
+            sed -i 's/CONFIG_PACKAGE_python3-base=y/# CONFIG_PACKAGE_python3-base is not set/' .config
+          fi
+
+          # Aktifkan fitur ccache secara resmi di dalam konfigurasi internal OpenWrt
+          echo "CONFIG_CCACHE=y" >> .config
+
+          # ==========================================
 
           make defconfig
           make download -j"$(nproc)"
           find dl -size 0 -exec rm -f {} \;
 
-          make -j"$(nproc)" CC="ccache gcc" world || make -j1 V=s CC="ccache gcc" world
+          # Jalankan perintah kompilasi world standar tanpa memaksa parameter CC eksternal
+          make -j"$(nproc)" world || make -j1 V=s world
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
