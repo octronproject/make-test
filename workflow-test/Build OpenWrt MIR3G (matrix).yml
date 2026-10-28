@@ -1,0 +1,94 @@
+name: Build OpenWrt MIR3G (matrix)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "21.02.7"
+            openwrt_tag: "v21.02.7"
+            container_image: "ubuntu:20.04"
+          - version: "22.03.6"
+            openwrt_tag: "v22.03.6"
+            container_image: "ubuntu:20.04"
+          - version: "23.05.6"
+            openwrt_tag: "v23.05.6"
+            container_image: "ubuntu:22.04"
+
+    container:
+      image: ${{ matrix.container_image }}
+      options: --user root
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      FORCE_UNSAFE_CONFIGURE: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup build user
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          apt-get update
+          apt-get install -y --no-install-recommends sudo ca-certificates git coreutils
+
+          if ! id -u builder >/dev/null 2>&1; then
+            useradd -m -s /bin/bash builder
+          fi
+
+          echo 'builder ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+          chown -R builder:builder "${GITHUB_WORKSPACE}"
+          chown -R builder:builder /tmp
+
+      - name: Set build date
+        shell: bash
+        run: echo "BUILD_DATE=$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+
+      - name: Build OpenWrt ${{ matrix.version }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo -u builder -H bash -lc '
+            set -euxo pipefail
+
+            cd "${GITHUB_WORKSPACE}"
+
+            if [ ! -d "openwrt" ]; then
+              git clone https://github.com/openwrt/openwrt.git "${GITHUB_WORKSPACE}/openwrt"
+            fi
+
+            cd "${GITHUB_WORKSPACE}/openwrt"
+            git fetch --all --tags --force
+            git checkout "${{ matrix.openwrt_tag }}"
+
+            ./scripts/feeds update -a
+            ./scripts/feeds install -a
+
+            cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/.config" "${GITHUB_WORKSPACE}/openwrt/.config"
+            cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/mt7621.mk" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/image/mt7621.mk"
+            cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/mt7621_xiaomi_mi-router-3g.dts" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts"
+
+            make defconfig
+            make download -j"$(nproc)"
+            find dl -size 0 -exec rm -f {} \;
+            make -j"$(nproc)" world || make -j1 V=s world
+          '
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt_${{ matrix.version }}_MIR3G_${{ env.BUILD_DATE }}
+          path: ${{ github.workspace }}/openwrt/bin
