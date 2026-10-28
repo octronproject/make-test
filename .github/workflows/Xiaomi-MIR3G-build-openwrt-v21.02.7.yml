@@ -11,42 +11,49 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ubuntu:20.04
-      
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-        
-    - name: Install Prerequisites inside Container
-      env:
-          DEBIAN_FRONTEND: noninteractive
-      run: |
-          	apt-get update
-          	apt-get install -y build-essential clang flex g++ gawk gcc-multilib \
-            git gettext libncurses5-dev libssl-dev python3-pip python3-dev \
-            python3-setuptools rsync unzip zlib1g-dev swig wget file time morse
 
-          	git clone https://github.com/openwrt/openwrt.git
-          	cd openwrt
-          	git pull
-          	git checkout v21.02.7
-            
-      	     ./scripts/feeds update -a
-             ./scripts/feeds install -a
-        	  
-          set -e
-        	cp xiaomi-mir3g/fullconfig/openwrt-v21.02.7/.config openwrt/.config
-        	cp xiaomi-mir3g/fullconfig/openwrt-v21.02.7/mt7621.mk openwrt/target/linux/ramips/image/mt7621.mk
-        	cp xiaomi-mir3g/fullconfig/openwrt-v21.02.7/mt7621_xiaomi_mi-router-3g.dts openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
-        	  
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set build date
+        run: echo "BUILD_DATE=$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+
+      - name: Install Prerequisites inside Container
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential clang flex g++ gawk gcc-multilib \
+            git gettext libncurses5-dev libssl-dev python3-pip python3-dev \
+            python3-setuptools rsync unzip zlib1g-dev swig wget file time
+
+          if [ ! -d "${GITHUB_WORKSPACE}/openwrt" ]; then
+            git clone https://github.com/openwrt/openwrt.git "${GITHUB_WORKSPACE}/openwrt"
+          fi
+
+          cd "${GITHUB_WORKSPACE}/openwrt"
+          git fetch --all --tags --force
+          git checkout v21.02.7
+
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+          cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v21.02.7/.config" "${GITHUB_WORKSPACE}/openwrt/.config"
+          cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v21.02.7/mt7621.mk" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/image/mt7621.mk"
+          cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v21.02.7/mt7621_xiaomi_mi-router-3g.dts" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts"
+
           make defconfig
-        	
-        	make download -j$(nproc)
-        	find dl -size 0 -exec rm -f {} \;
-        	
-        	make -j$(nproc) world || make -j1 V=s world
-        
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
+          make download -j"$(nproc)"
+          find dl -size 0 -exec rm -f {} \;
+          make -j"$(nproc)" world || make -j1 V=s world
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
           name: OpenWrt_21.02.7_MIR3G_${{ env.BUILD_DATE }}
-          path: openwrt/bin
+          path: ${{ github.workspace }}/openwrt/bin
