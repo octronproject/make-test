@@ -1,0 +1,99 @@
+name: Build OpenWrt MIR3G (matrix + ccache)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: OpenWrt ${{ matrix.version }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "21.02.7"
+            tag: "v21.02.7"
+            image: "ubuntu:20.04"
+          - version: "22.03.6"
+            tag: "v22.03.6"
+            image: "ubuntu:20.04"
+          - version: "23.05.6"
+            tag: "v23.05.6"
+            image: "ubuntu:22.04"
+
+    container:
+      image: ${{ matrix.image }}
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      FORCE_UNSAFE_CONFIGURE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ github.workspace }}/.ccache
+            ${{ github.workspace }}/openwrt/dl
+          key: openwrt-${{ matrix.version }}-${{ runner.os }}-${{ hashFiles('**/*.mk', '**/.config') }}
+          restore-keys: |
+            openwrt-${{ matrix.version }}-${{ runner.os }}-
+            openwrt-${{ matrix.version }}-
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential clang flex g++ gawk gcc-multilib \
+            git gettext libncurses5-dev libssl-dev python3-pip python3-dev \
+            python3-setuptools rsync unzip zlib1g-dev swig wget file time \
+            ca-certificates ccache
+
+      - name: Set build date
+        shell: bash
+        run: echo "BUILD_DATE=$(date -u +'%Y%m%d-%H%M%S')" >> "$GITHUB_ENV"
+
+      - name: Clone and build OpenWrt
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          export PATH="/usr/lib/ccache:${PATH}"
+
+          if [ ! -d "${GITHUB_WORKSPACE}/openwrt" ]; then
+            git clone https://github.com/openwrt/openwrt.git "${GITHUB_WORKSPACE}/openwrt"
+          fi
+
+          cd "${GITHUB_WORKSPACE}/openwrt"
+          git fetch --all --tags --force
+          git checkout "${{ matrix.tag }}"
+
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+          cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/.config" "${GITHUB_WORKSPACE}/openwrt/.config"
+          cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/mt7621.mk" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/image/mt7621.mk"
+          cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v${{ matrix.version }}/mt7621_xiaomi_mi-router-3g.dts" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts"
+
+          make defconfig
+          make download -j"$(nproc)"
+          find dl -size 0 -exec rm -f {} \;
+
+          make -j"$(nproc)" CC="ccache gcc" world || make -j1 V=s CC="ccache gcc" world
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt_${{ matrix.version }}_MIR3G_${{ env.BUILD_DATE }}
+          path: ${{ github.workspace }}/openwrt/bin
