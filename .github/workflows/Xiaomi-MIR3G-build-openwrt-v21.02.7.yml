@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ubuntu:20.04
+      options: --user 1001
 
     steps:
       - name: Checkout Code
@@ -22,6 +23,7 @@ jobs:
       - name: Install Prerequisites inside Container
         env:
           DEBIAN_FRONTEND: noninteractive
+          FORCE_UNSAFE_CONFIGURE: "1"
         shell: bash
         run: |
           set -euxo pipefail
@@ -47,6 +49,7 @@ jobs:
           cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v21.02.7/mt7621.mk" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/image/mt7621.mk"
           cp "${GITHUB_WORKSPACE}/xiaomi-mir3g/fullconfig/openwrt-v21.02.7/mt7621_xiaomi_mi-router-3g.dts" "${GITHUB_WORKSPACE}/openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts"
 
+          export FORCE_UNSAFE_CONFIGURE=1
           make defconfig
           make download -j"$(nproc)"
           find dl -size 0 -exec rm -f {} \;
