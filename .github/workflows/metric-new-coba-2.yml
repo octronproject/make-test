@@ -1,0 +1,104 @@
+name: Build OpenWrt Matrix Specific Config (Xiaomi MIR3G)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'xiaomi-mir3g/fullconfig/**'
+
+jobs:
+  build_firmware:
+    name: Build OpenWrt ${{ matrix.tag }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: v21.02.7
+            config_dir: openwrt-v21.02.7
+            container: ubuntu:20.04
+          - tag: v22.03.6
+            config_dir: openwrt-v22.03.6
+            container: null
+          - tag: v23.05.6
+            config_dir: openwrt-v23.05.6
+            container: null
+
+    container: ${{ matrix.container }}
+
+    steps:
+      - name: Install Git & Sudo di Container (Khusus Ubuntu Lawas/Docker v21)
+        if: matrix.tag == 'v21.02.7'
+        run: |
+          apt-get update
+          apt-get install -y git sudo cpio
+
+      - name: Checkout Repositori
+        uses: actions/checkout@v4
+
+      - name: Setup Lingkungan OS (Install Dependencies)
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
+            ln -fs /usr/share/zoneinfo/UTC /etc/localtime
+          else
+            sudo ln -fs /usr/share/zoneinfo/UTC /etc/localtime
+          fi
+
+          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
+            apt-get update
+          else
+            sudo apt-get update
+          fi
+
+          PACKAGES="build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget python3 python3-setuptools"
+
+          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
+            apt-get install -y $PACKAGES
+          else
+            sudo apt-get install -y $PACKAGES
+          fi
+
+      - name: Clone Source Code OpenWrt
+        run: |
+          git clone --depth 1 --branch ${{ matrix.tag }} https://github.com/openwrt/openwrt.git openwrt
+
+      - name: Update & Install Feeds
+        run: |
+          cd openwrt
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Terapkan Konfigurasi Spesifik Versi
+        run: |
+          cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/.config openwrt/.config
+          cd openwrt
+          make defconfig
+
+      - name: Download Source Package
+        run: |
+          cd openwrt
+          make download -j8
+          find dl -size -1024c -exec ls -l {} \;
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Proses Kompilasi Firmware
+        run: |
+          cd openwrt
+          echo -e "$(nproc) thread CPU digunakan untuk compile."
+          make -j$(nproc) FORCE_UNSAFE_CONFIGURE=1 || make -j1 V=s FORCE_UNSAFE_CONFIGURE=1
+
+      - name: Kelompokkan Hasil Build
+        run: |
+          mkdir -p ./output
+          find openwrt/bin/targets/ -type f -name "*mir3g*" -o -name "*sysupgrade*" | xargs -I {} cp {} ./output/
+          echo "Daftar file hasil build yang siap diunduh:"
+          ls -lh ./output
+
+      - name: Upload Artifacts Ke GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt-${{ matrix.tag }}-Xiaomi-MIR3G
+          path: ./output/
