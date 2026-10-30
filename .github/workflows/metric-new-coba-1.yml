@@ -52,13 +52,23 @@ jobs:
             sudo apt-get update
           fi
 
-          PACKAGES="build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-            gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget python3 python3-setuptools"
+          BASE_PACKAGES="build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget python3"
+
+          if apt-cache policy python3-distutils >/dev/null 2>&1; then
+            if apt-cache policy python3-distutils | grep -q "Candidate:.*"; then
+              BASE_PACKAGES="$BASE_PACKAGES python3-distutils"
+            else
+              BASE_PACKAGES="$BASE_PACKAGES python3-setuptools"
+            fi
+          else
+            BASE_PACKAGES="$BASE_PACKAGES python3-setuptools"
+          fi
 
           if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
-            apt-get install -y $PACKAGES
+            apt-get install -y $BASE_PACKAGES
           else
-            sudo apt-get install -y $PACKAGES
+            sudo apt-get install -y $BASE_PACKAGES
           fi
 
       - name: Clone Source Code OpenWrt
