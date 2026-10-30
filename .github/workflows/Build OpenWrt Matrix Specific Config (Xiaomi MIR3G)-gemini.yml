@@ -8,21 +8,27 @@ on:
 
 jobs:
   build_firmware:
-    name: Build OpenWrt ${{ matrix.version }}
+    name: Build OpenWrt ${{ matrix.tag }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        version:
-          - openwrt-21.02
-          - openwrt-22.03
-          - openwrt-23.05
-    
-    container: ${{ matrix.version == 'openwrt-21.02' && 'ubuntu:20.04' || null }}
+        include:
+          - tag: v21.02.7
+            config_dir: openwrt-v21.02.7
+            container: ubuntu:20.04
+          - tag: v22.03.6
+            config_dir: openwrt-v22.03.6
+            container: null
+          - tag: v23.05.6
+            config_dir: openwrt-v23.05.6
+            container: null
+
+    container: ${{ matrix.container }}
 
     steps:
       - name: Install Git & Sudo di Container (Khusus Ubuntu Lawas/Docker v21)
-        if: matrix.version == 'openwrt-21.02'
+        if: matrix.tag == 'v21.02.7'
         run: |
           apt-get update
           apt-get install -y git sudo cpio
@@ -34,33 +40,36 @@ jobs:
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          # 1. Paksa set timezone ke UTC agar tzdata tidak memunculkan prompt interaktif
-          sudo ln -fs /usr/share/zoneinfo/UTC /etc/localtime
-          
-          # 2. Jika berjalan langsung di runner host biasa (bukan container v21), bersihkan ruang disk
-          if [ -z "${{ job.container.id }}" ]; then
-            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/share/swift
+          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
+            ln -fs /usr/share/zoneinfo/UTC /etc/localtime
+          else
+            sudo ln -fs /usr/share/zoneinfo/UTC /etc/localtime
           fi
-          
-          sudo apt-get update
-          
-          # 3. Kumpulkan dependensi dasar standar OpenWrt
+
+          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
+            apt-get update
+          else
+            sudo apt-get update
+          fi
+
           PACKAGES="build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget python3"
-          
-          # 4. Solusi Python Distutils dinamis: Pasang python3-distutils HANYA JIKA paketnya tersedia di Ubuntu tersebut
+
           if apt-cache show python3-distutils >/dev/null 2>&1; then
             PACKAGES="$PACKAGES python3-distutils"
           else
-            # Untuk Ubuntu versi baru yang menghilangkan distutils, gunakan python3-setuptools sebagai pengganti
             PACKAGES="$PACKAGES python3-setuptools"
           fi
-          
-          sudo apt-get install -y $PACKAGES
+
+          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
+            apt-get install -y $PACKAGES
+          else
+            sudo apt-get install -y $PACKAGES
+          fi
 
       - name: Clone Source Code OpenWrt
         run: |
-          git clone -b ${{ matrix.version }} https://github.com openwrt
+          git clone --depth 1 --branch ${{ matrix.tag }} https://github.com/openwrt/openwrt.git openwrt
 
       - name: Update & Install Feeds
         run: |
@@ -70,7 +79,7 @@ jobs:
 
       - name: Terapkan Konfigurasi Spesifik Versi
         run: |
-          cp xiaomi-mir3g/fullconfig/${{ matrix.version }}.config openwrt/.config
+          cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/.config openwrt/.config
           cd openwrt
           make defconfig
 
@@ -97,5 +106,5 @@ jobs:
       - name: Upload Artifacts Ke GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-${{ matrix.version }}-Xiaomi-MIR3G
+          name: OpenWrt-${{ matrix.tag }}-Xiaomi-MIR3G
           path: ./output/
