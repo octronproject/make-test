@@ -1,4 +1,4 @@
-name: coba 2 Build OpenWrt Matrix Specific Config (Xiaomi MIR3G)
+name: Build OpenWrt Matrix Specific Config (Xiaomi MIR3G)
 
 on:
   workflow_dispatch:
