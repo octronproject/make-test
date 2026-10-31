@@ -2,112 +2,150 @@ name: Build OpenWrt Matrix Specific Config (Xiaomi MIR3G)
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "OpenWrt version to build"
+        required: true
+        default: "21.02.7"
+        type: choice
+        options:
+          - "21.02.7"
+          - "22.03.6"
+          - "23.05.6"
 
 jobs:
-  build_firmware:
-    name: Build OpenWrt ${{ matrix.tag }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - tag: v21.02.7
-            config_dir: openwrt-v21.02.7
-            container: ubuntu:20.04
-          - tag: v22.03.6
-            config_dir: openwrt-v22.03.6
-            container: null
-          - tag: v23.05.6
-            config_dir: openwrt-v23.05.6
-            container: null
-
-    container: ${{ matrix.container }}
+  build:
+    name: OpenWrt ${{ github.event.inputs.version }} - Xiaomi MIR3G
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      FORCE_UNSAFE_CONFIGURE: "1"
 
     steps:
-      - name: Install Git & Sudo di Container (Khusus Ubuntu Lawas/Docker v21)
-        if: matrix.tag == 'v21.02.7'
-        run: |
-          apt-get update
-          apt-get install -y git sudo cpio
-
-      - name: Checkout Repositori
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Lingkungan OS (Install Dependencies)
-        env:
-          DEBIAN_FRONTEND: noninteractive
+      - name: Set version mapping
+        id: version_map
+        shell: bash
         run: |
-          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
-            ln -fs /usr/share/zoneinfo/UTC /etc/localtime
-          else
-            sudo ln -fs /usr/share/zoneinfo/UTC /etc/localtime
-          fi
+          VERSION="${{ github.event.inputs.version }}"
+          case "$VERSION" in
+            "21.02.7")
+              echo "openwrt_branch=v21.02.7" >> $GITHUB_ENV
+              echo "config_dir=xiaomi-mir3g/fullconfig/openwrt-v21.02.7" >> $GITHUB_ENV
+              ;;
+            "22.03.6")
+              echo "openwrt_branch=v22.03.6" >> $GITHUB_ENV
+              echo "config_dir=xiaomi-mir3g/fullconfig/openwrt-v22.03.6" >> $GITHUB_ENV
+              ;;
+            "23.05.6")
+              echo "openwrt_branch=v23.05.6" >> $GITHUB_ENV
+              echo "config_dir=xiaomi-mir3g/fullconfig/openwrt-v23.05.6" >> $GITHUB_ENV
+              ;;
+            *)
+              echo "Unsupported version: $VERSION"
+              exit 1
+              ;;
+          esac
 
-          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
-            apt-get update
-          else
-            sudo apt-get update
-          fi
-
-          PACKAGES="build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-            gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget python3 python3-setuptools"
-
-          if [ "${{ matrix.container }}" != "null" ] && [ -n "${{ matrix.container }}" ]; then
-            apt-get install -y $PACKAGES
-          else
-            sudo apt-get install -y $PACKAGES
-          fi
-
-      - name: Clone Source Code OpenWrt
+      - name: Install build dependencies
+        shell: bash
         run: |
-          git clone --depth 1 --branch ${{ matrix.tag }} https://github.com/openwrt/openwrt.git openwrt
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            clang \
+            flex \
+            bison \
+            g++ \
+            gawk \
+            gcc-multilib \
+            g++-multilib \
+            gettext \
+            git \
+            libncurses5-dev \
+            libssl-dev \
+            python3 \
+            python3-dev \
+            python3-pip \
+            python3-setuptools \
+            rsync \
+            unzip \
+            zlib1g-dev \
+            swig \
+            wget \
+            file \
+            time \
+            ca-certificates \
+            curl \
+            patch \
+            quilt
 
-      - name: Update & Install Feeds
+      - name: Clone OpenWrt source
+        shell: bash
         run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
+          git clone --depth 1 --branch "${openwrt_branch}" https://github.com/openwrt/openwrt.git openwrt
 
-      - name: Terapkan Konfigurasi Custom (.config + .mk + .dts)
+      - name: Copy version-specific config, mt7621.mk, and DTS
+        shell: bash
         run: |
           set -eux
 
-          cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/.config openwrt/.config
+          CONFIG_DIR="${config_dir}"
+
+          test -f "${CONFIG_DIR}/.config"
+          test -f "${CONFIG_DIR}/mt7621.mk"
+          test -f "${CONFIG_DIR}/mt7621_xiaomi_mi-router-3g.dts"
+
+          cp "${CONFIG_DIR}/.config" openwrt/.config
 
           mkdir -p openwrt/target/linux/ramips/image
           mkdir -p openwrt/target/linux/ramips/dts
 
-          cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/mt7621.mk \
-            openwrt/target/linux/ramips/image/mt7621.mk
+          cp "${CONFIG_DIR}/mt7621.mk" openwrt/target/linux/ramips/image/mt7621.mk
+          cp "${CONFIG_DIR}/mt7621_xiaomi_mi-router-3g.dts" openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
 
-          cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/mt7621_xiaomi_mi-router-3g.dts \
-            openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
+          echo "Files copied:"
+          ls -l openwrt/.config
+          ls -l openwrt/target/linux/ramips/image/mt7621.mk
+          ls -l openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
 
-          cd openwrt
+      - name: Update feeds and configure OpenWrt
+        working-directory: openwrt
+        shell: bash
+        run: |
+          set -eux
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
           make defconfig
 
-      - name: Download Source Package
+      - name: Download sources
+        working-directory: openwrt
+        shell: bash
         run: |
-          cd openwrt
-          make download -j8
-          find dl -size -1024c -exec ls -l {} \;
-          find dl -size -1024c -exec rm -f {} \;
+          set -eux
+          make download -j"$(nproc)"
 
-      - name: Proses Kompilasi Firmware
+      - name: Build firmware
+        working-directory: openwrt
+        shell: bash
         run: |
-          cd openwrt
-          echo -e "$(nproc) thread CPU digunakan untuk compile."
-          make -j$(nproc) FORCE_UNSAFE_CONFIGURE=1 || make -j1 V=s FORCE_UNSAFE_CONFIGURE=1
+          set -eux
+          make -j"$(nproc)" V=s || make -j1 V=s
 
-      - name: Kelompokkan Hasil Build
+      - name: Collect build output
+        shell: bash
         run: |
-          mkdir -p ./output
-          find openwrt/bin/targets -type f -exec cp -t ./output {} +
-          echo "Daftar file hasil build yang siap diunduh:"
-          ls -lh ./output
+          mkdir -p output
+          find openwrt/bin/targets -type f -exec cp -t output {} +
+          echo "Build artifacts:"
+          ls -lh output
 
-      - name: Upload Artifacts Ke GitHub
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-${{ matrix.tag }}-Xiaomi-MIR3G
-          path: ./output/
+          name: OpenWrt-${{ github.event.inputs.version }}-Xiaomi-MIR3G
+          path: output/
