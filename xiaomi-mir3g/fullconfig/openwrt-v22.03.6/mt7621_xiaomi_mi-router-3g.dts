@@ -70,6 +70,7 @@
 
 	keys {
 		compatible = "gpio-keys";
+};
 
 		reset {
 			label = "reset";
