@@ -11,12 +11,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - tag: v21.02.7
-            config_dir: openwrt-v21.02.7
-            container: ubuntu:20.04
-          - tag: v22.03.6
-            config_dir: openwrt-v22.03.6
-            container: null
           - tag: v23.05.6
             config_dir: openwrt-v23.05.6
             container: null
