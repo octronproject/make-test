@@ -2,9 +2,6 @@ name: Build OpenWrt Matrix Specific Config (Xiaomi MIR3G)
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'xiaomi-mir3g/fullconfig/**'
 
 jobs:
   build_firmware:
