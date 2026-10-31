@@ -68,9 +68,21 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Terapkan Konfigurasi Spesifik Versi
+      - name: Terapkan Konfigurasi Custom (.config + .mk + .dts)
         run: |
+          set -eux
+
           cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/.config openwrt/.config
+
+          mkdir -p openwrt/target/linux/ramips/image
+          mkdir -p openwrt/target/linux/ramips/dts
+
+          cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/mt7621.mk \
+            openwrt/target/linux/ramips/image/mt7621.mk
+
+          cp xiaomi-mir3g/fullconfig/${{ matrix.config_dir }}/mt7621_xiaomi_mi-router-3g.dts \
+            openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
+
           cd openwrt
           make defconfig
 
