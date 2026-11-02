@@ -1,4 +1,4 @@
-name: coba 2 OpenWrt Matrix Build Xiaomi MIR3G (Safe Version)
+name: coba 2 OpenWrt Matrix Build Xiaomi MIR3G (Exact Custom Path)
 
 on:
   workflow_dispatch:
@@ -12,55 +12,35 @@ jobs:
       matrix:
         include:
           - tag: v21.02.7
-            config_dir: xiaomi-mir3g-openwrt-v21.02.7
-            container: ubuntu:20.04
-            use_container: true
-
+            config_dir: openwrt-v21.02.7
           - tag: v22.03.6
-            config_dir: xiaomi-mir3g-openwrt-v22.03.6
-            container: ubuntu:20.04
-            use_container: true
-
+            config_dir: openwrt-v22.03.6
           - tag: v23.05.6
-            config_dir: xiaomi-mir3g-openwrt-v23.05.6
-            container: ""
-            use_container: false
-
-    container: ${{ matrix.use_container && matrix.container || null }}
+            config_dir: openwrt-v23.05.6
 
     steps:
+      - name: Checkout Repositori
+        uses: actions/checkout@v4
+
       - name: Cek folder konfigurasi versi
         id: check_config
         shell: bash
         run: |
-          SRC="${{ matrix.config_dir }}"
+          SRC="xiaomi-mir3g/${{ matrix.config_dir }}"
           if [ ! -d "$SRC" ]; then
             echo "Folder konfigurasi tidak ditemukan: $SRC"
             echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "Folder konfigurasi ditemukan: $SRC"
           echo "CONFIG_FOUND=true" >> "$GITHUB_ENV"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Skip build jika folder config tidak ada
         if: ${{ env.CONFIG_FOUND == 'false' }}
         shell: bash
         run: |
-          echo "Melewati build untuk ${{ matrix.tag }} karena folder konfigurasi tidak ditemukan: ${{ matrix.config_dir }}"
-
-      - name: Install Git & Sudo di Container (Khusus Ubuntu Lawas)
-        if: ${{ env.CONFIG_FOUND != 'false' && matrix.tag == 'v21.02.7' }}
-        shell: bash
-        run: |
-          apt-get update
-          apt-get install -y git sudo cpio
-
-      - name: Checkout Repositori
-        if: ${{ env.CONFIG_FOUND != 'false' }}
-        uses: actions/checkout@v4
+          echo "Melewati build untuk ${{ matrix.tag }} karena folder konfigurasi tidak ditemukan: xiaomi-mir3g/${{ matrix.config_dir }}"
 
       - name: Setup Lingkungan OS (Install Dependencies)
         if: ${{ env.CONFIG_FOUND != 'false' }}
@@ -68,23 +48,14 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         shell: bash
         run: |
-          if [ "${{ matrix.use_container }}" = "true" ]; then
-            ln -fs /usr/share/zoneinfo/UTC /etc/localtime
-            apt-get update
-          else
-            sudo ln -fs /usr/share/zoneinfo/UTC /etc/localtime
-            sudo apt-get update
-          fi
+          sudo ln -fs /usr/share/zoneinfo/UTC /etc/localtime
+          sudo apt-get update
 
           PACKAGES="build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
             gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
             python3 python3-setuptools"
 
-          if [ "${{ matrix.use_container }}" = "true" ]; then
-            apt-get install -y $PACKAGES
-          else
-            sudo apt-get install -y $PACKAGES
-          fi
+          sudo apt-get install -y $PACKAGES
 
       - name: Clone Source Code OpenWrt
         if: ${{ env.CONFIG_FOUND != 'false' }}
@@ -104,30 +75,25 @@ jobs:
         if: ${{ env.CONFIG_FOUND != 'false' }}
         shell: bash
         run: |
-          SRC="${{ matrix.config_dir }}"
+          SRC="xiaomi-mir3g/${{ matrix.config_dir }}"
+
           if [ ! -d "$SRC" ]; then
             echo "Folder konfigurasi tidak ditemukan: $SRC"
             exit 1
           fi
 
-          # Copy file .config utama
-          if [ -f "$SRC/.config" ]; then
-            cp -f "$SRC/.config" openwrt/.config
-          else
-            echo "Peringatan: file .config tidak ditemukan di $SRC"
-          fi
-
-          # Copy semua file .mk dan .dts dari folder versi
-          shopt -s nullglob
-          for f in "$SRC"/*.mk "$SRC"/*.dts; do
-            cp -f "$f" openwrt/
+          for f in ".config" "mt7621.mk" "mt7621_xiaomi_mi-router-3g.dts"; do
+            if [ ! -f "$SRC/$f" ]; then
+              echo "File tidak ditemukan: $SRC/$f"
+              exit 1
+            fi
           done
 
-          # Validasi: pastikan minimal ada file yang dikopi
-          if [ ! -f "openwrt/.config" ] && [ -z "$(find openwrt -maxdepth 1 -type f \( -name '*.mk' -o -name '*.dts' \) -print -quit)" ]; then
-            echo "Tidak ada file .config/.mk/.dts yang ditemukan di $SRC"
-            exit 1
-          fi
+          mkdir -p openwrt/target/linux/ramips/image openwrt/target/linux/ramips/dts
+
+          cp -f "$SRC/.config" openwrt/.config
+          cp -f "$SRC/mt7621.mk" openwrt/target/linux/ramips/image/mt7621.mk
+          cp -f "$SRC/mt7621_xiaomi_mi-router-3g.dts" openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
 
           cd openwrt
           make defconfig
@@ -155,7 +121,6 @@ jobs:
         run: |
           mkdir -p "./output/${{ matrix.tag }}"
           find openwrt/bin/targets -type f -exec cp -f {} "./output/${{ matrix.tag }}/" \;
-
           echo "Daftar file hasil build yang siap diunduh:"
           ls -lh "./output/${{ matrix.tag }}"
 
