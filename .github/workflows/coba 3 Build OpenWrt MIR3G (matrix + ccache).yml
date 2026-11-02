@@ -12,19 +12,19 @@ jobs:
       matrix:
         include:
           - tag: v21.02.7
-            config_dir: xiaomi-mir3g-openwrt-v21.02.7
+            config_dir: openwrt-v21.02.7
             container: ubuntu:20.04
             use_container: true
 
           - tag: v22.03.6
-            config_dir: xiaomi-mir3g-openwrt-v22.03.6
+            config_dir: openwrt-v22.03.6
             container: ubuntu:20.04
             use_container: true
 
           - tag: v23.05.6
-            config_dir: xiaomi-mir3g-openwrt-v23.05.6
+            config_dir: openwrt-v23.05.6
             container: ""
-            use_container: true
+            use_container: false
 
     container: ${{ matrix.use_container && matrix.container || null }}
 
@@ -33,7 +33,7 @@ jobs:
         id: check_config
         shell: bash
         run: |
-          SRC="${{ matrix.config_dir }}"
+          SRC="xiaomi-mir3g/${{ matrix.config_dir }}"
           if [ ! -d "$SRC" ]; then
             echo "Folder konfigurasi tidak ditemukan: $SRC"
             echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
@@ -49,7 +49,7 @@ jobs:
         if: ${{ env.CONFIG_FOUND == 'false' }}
         shell: bash
         run: |
-          echo "Melewati build untuk ${{ matrix.tag }} karena folder konfigurasi tidak ditemukan: ${{ matrix.config_dir }}"
+          echo "Melewati build untuk ${{ matrix.tag }} karena folder konfigurasi tidak ditemukan: xiaomi-mir3g/${{ matrix.config_dir }}"
 
       - name: Install Git & Sudo di Container (Khusus Ubuntu Lawas)
         if: ${{ env.CONFIG_FOUND != 'false' && matrix.tag == 'v21.02.7' }}
@@ -104,7 +104,8 @@ jobs:
         if: ${{ env.CONFIG_FOUND != 'false' }}
         shell: bash
         run: |
-          SRC="${{ matrix.config_dir }}"
+          SRC="xiaomi-mir3g/${{ matrix.config_dir }}"
+
           if [ ! -d "$SRC" ]; then
             echo "Folder konfigurasi tidak ditemukan: $SRC"
             exit 1
@@ -118,12 +119,11 @@ jobs:
           fi
 
           # Copy semua file .mk dan .dts dari folder versi
-          shopt -s nullglob
-          for f in "$SRC"/*.mk "$SRC"/*.dts; do
-            cp -f "$f" openwrt/
-          done
+          if [ -d "$SRC" ]; then
+            find "$SRC" -type f \( -name "*.mk" -o -name "*.dts" \) -exec cp -f {} openwrt/ \;
+          fi
 
-          # Validasi: pastikan minimal ada file yang dikopi
+          # Validasi: cek apakah minimal ada file yang benar-benar dikopi
           if [ ! -f "openwrt/.config" ] && [ -z "$(find openwrt -maxdepth 1 -type f \( -name '*.mk' -o -name '*.dts' \) -print -quit)" ]; then
             echo "Tidak ada file .config/.mk/.dts yang ditemukan di $SRC"
             exit 1
@@ -155,7 +155,6 @@ jobs:
         run: |
           mkdir -p "./output/${{ matrix.tag }}"
           find openwrt/bin/targets -type f -exec cp -f {} "./output/${{ matrix.tag }}/" \;
-
           echo "Daftar file hasil build yang siap diunduh:"
           ls -lh "./output/${{ matrix.tag }}"
 
