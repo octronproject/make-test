@@ -17,23 +17,60 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Debug checkout metadata
+        shell: bash
+        run: |
+          echo "=== GitHub Actions debug ==="
+          echo "branch/ref: ${GITHUB_REF:-unknown}"
+          echo "ref name: ${GITHUB_REF_NAME:-unknown}"
+          echo "sha: ${GITHUB_SHA:-unknown}"
+          echo "event_name: ${GITHUB_EVENT_NAME:-unknown}"
+          echo "repository: ${GITHUB_REPOSITORY:-unknown}"
+          echo "workspace: ${GITHUB_WORKSPACE:-unknown}"
+          echo "==== repository root ===="
+          ls -la
+          echo "==== xiaomi-mir3g tree ===="
+          if [ -d "xiaomi-mir3g" ]; then
+            find xiaomi-mir3g -maxdepth 2 -mindepth 1 | sort
+          else
+            echo "xiaomi-mir3g folder DOES NOT EXIST"
+          fi
+
       - name: Validate config directory exists
         id: config_check
         shell: bash
         run: |
+          set -u
           SRC="xiaomi-mir3g/openwrt-v21.02.7"
+          echo "=== validating config ==="
+          echo "BRANCH: ${GITHUB_REF_NAME:-${GITHUB_REF:-unknown}}"
+          echo "COMMIT: ${GITHUB_SHA:-unknown}"
+          echo "CHECK_PATH: $SRC"
+
           if [ ! -d "$SRC" ]; then
             echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
             echo "Folder konfigurasi tidak ditemukan: $SRC"
+            echo "Isi folder xiaomi-mir3g:"
+            if [ -d "xiaomi-mir3g" ]; then
+              find xiaomi-mir3g -maxdepth 2 -mindepth 1 | sort
+            else
+              echo "xiaomi-mir3g tidak ada di checkout saat ini"
+            fi
             exit 0
           fi
+
+          echo "Isi folder $SRC:"
+          ls -la "$SRC" || true
 
           for f in ".config" "mt7621.mk" "mt7621_xiaomi_mi-router-3g.dts"; do
             if [ ! -f "$SRC/$f" ]; then
               echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
               echo "File tidak ditemukan: $SRC/$f"
+              echo "Isi folder $SRC:"
+              ls -la "$SRC" || true
               exit 0
             fi
+            echo "FOUND: $SRC/$f"
           done
 
           echo "CONFIG_FOUND=true" >> "$GITHUB_ENV"
@@ -148,282 +185,4 @@ jobs:
         with:
           name: OpenWrt-v21.02.7-Xiaomi-MIR3G
           path: output/v21.02.7/
-          if-no-files-found: error
-
-  build_v22036:
-    name: Build OpenWrt v22.03.6
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Validate config directory exists
-        id: config_check
-        shell: bash
-        run: |
-          SRC="xiaomi-mir3g/openwrt-v22.03.6"
-          if [ ! -d "$SRC" ]; then
-            echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-            echo "Folder konfigurasi tidak ditemukan: $SRC"
-            exit 0
-          fi
-
-          for f in ".config" "mt7621.mk" "mt7621_xiaomi_mi-router-3g.dts"; do
-            if [ ! -f "$SRC/$f" ]; then
-              echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-              echo "File tidak ditemukan: $SRC/$f"
-              exit 0
-            fi
-          done
-
-          echo "CONFIG_FOUND=true" >> "$GITHUB_ENV"
-
-      - name: Skip if config invalid
-        if: env.CONFIG_FOUND == 'false'
-        run: echo "Skip build v22.03.6 karena konfigurasi tidak valid."
-
-      - name: Install system dependencies
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          if [ "$(id -u)" -ne 0 ]; then
-            sudo apt-get update
-            sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-              gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
-              python3 python3-setuptools ccache
-          else
-            apt-get update
-            apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-              gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
-              python3 python3-setuptools ccache
-          fi
-
-      - name: Cache ccache
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.CCACHE_DIR }}
-            openwrt/.ccache
-          key: openwrt-v22.03.6-ccache-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            openwrt-v22.03.6-ccache-${{ runner.os }}-
-            openwrt-v22.03.6-ccache-
-
-      - name: Cache OpenWrt downloads
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            openwrt/dl
-            openwrt/.config
-          key: openwrt-v22.03.6-downloads-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            openwrt-v22.03.6-downloads-${{ runner.os }}-
-
-      - name: Clone OpenWrt source
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          git clone --depth 1 --branch v22.03.6 https://github.com/openwrt/openwrt.git openwrt
-
-      - name: Apply custom MIR3G config
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          SRC="xiaomi-mir3g/openwrt-v22.03.6"
-
-          mkdir -p openwrt/target/linux/ramips/image openwrt/target/linux/ramips/dts
-
-          cp -f "$SRC/.config" openwrt/.config
-          cp -f "$SRC/mt7621.mk" openwrt/target/linux/ramips/image/mt7621.mk
-          cp -f "$SRC/mt7621_xiaomi_mi-router-3g.dts" openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
-
-          cd openwrt
-          make defconfig
-
-      - name: Update feeds
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: Download sources
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          cd openwrt
-          make download -j"$(nproc)"
-          find dl -size -1024c -exec ls -l {} \; 2>/dev/null || true
-          find dl -size -1024c -exec rm -f {} \; 2>/dev/null || true
-
-      - name: Compile firmware
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        env:
-          PATH: /usr/lib/ccache:$PATH
-        run: |
-          cd openwrt
-          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
-          export PATH="/usr/lib/ccache:$PATH"
-          ccache -z
-          make -j"$(nproc)" FORCE_UNSAFE_CONFIGURE=1 || make -j1 V=s FORCE_UNSAFE_CONFIGURE=1
-          ccache -s
-
-      - name: Collect build artifacts
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          mkdir -p output/v22.03.6
-          find openwrt/bin/targets -type f -exec cp -f {} output/v22.03.6/ \;
-          echo "Artifacts:"
-          ls -lh output/v22.03.6
-
-      - name: Upload artifact
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenWrt-v22.03.6-Xiaomi-MIR3G
-          path: output/v22.03.6/
-          if-no-files-found: error
-
-  build_v23056:
-    name: Build OpenWrt v23.05.6
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Validate config directory exists
-        id: config_check
-        shell: bash
-        run: |
-          SRC="xiaomi-mir3g/openwrt-v23.05.6"
-          if [ ! -d "$SRC" ]; then
-            echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-            echo "Folder konfigurasi tidak ditemukan: $SRC"
-            exit 0
-          fi
-
-          for f in ".config" "mt7621.mk" "mt7621_xiaomi_mi-router-3g.dts"; do
-            if [ ! -f "$SRC/$f" ]; then
-              echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-              echo "File tidak ditemukan: $SRC/$f"
-              exit 0
-            fi
-          done
-
-          echo "CONFIG_FOUND=true" >> "$GITHUB_ENV"
-
-      - name: Skip if config invalid
-        if: env.CONFIG_FOUND == 'false'
-        run: echo "Skip build v23.05.6 karena konfigurasi tidak valid."
-
-      - name: Install system dependencies
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          if [ "$(id -u)" -ne 0 ]; then
-            sudo apt-get update
-            sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-              gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
-              python3 python3-setuptools ccache
-          else
-            apt-get update
-            apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-              gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
-              python3 python3-setuptools ccache
-          fi
-
-      - name: Cache ccache
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.CCACHE_DIR }}
-            openwrt/.ccache
-          key: openwrt-v23.05.6-ccache-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            openwrt-v23.05.6-ccache-${{ runner.os }}-
-            openwrt-v23.05.6-ccache-
-
-      - name: Cache OpenWrt downloads
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            openwrt/dl
-            openwrt/.config
-          key: openwrt-v23.05.6-downloads-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            openwrt-v23.05.6-downloads-${{ runner.os }}-
-
-      - name: Clone OpenWrt source
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          git clone --depth 1 --branch v23.05.6 https://github.com/openwrt/openwrt.git openwrt
-
-      - name: Apply custom MIR3G config
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          SRC="xiaomi-mir3g/openwrt-v23.05.6"
-
-          mkdir -p openwrt/target/linux/ramips/image openwrt/target/linux/ramips/dts
-
-          cp -f "$SRC/.config" openwrt/.config
-          cp -f "$SRC/mt7621.mk" openwrt/target/linux/ramips/image/mt7621.mk
-          cp -f "$SRC/mt7621_xiaomi_mi-router-3g.dts" openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
-
-          cd openwrt
-          make defconfig
-
-      - name: Update feeds
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          cd openwrt
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: Download sources
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          cd openwrt
-          make download -j"$(nproc)"
-          find dl -size -1024c -exec ls -l {} \; 2>/dev/null || true
-          find dl -size -1024c -exec rm -f {} \; 2>/dev/null || true
-
-      - name: Compile firmware
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        env:
-          PATH: /usr/lib/ccache:$PATH
-        run: |
-          cd openwrt
-          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
-          export PATH="/usr/lib/ccache:$PATH"
-          ccache -z
-          make -j"$(nproc)" FORCE_UNSAFE_CONFIGURE=1 || make -j1 V=s FORCE_UNSAFE_CONFIGURE=1
-          ccache -s
-
-      - name: Collect build artifacts
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          mkdir -p output/v23.05.6
-          find openwrt/bin/targets -type f -exec cp -f {} output/v23.05.6/ \;
-          echo "Artifacts:"
-          ls -lh output/v23.05.6
-
-      - name: Upload artifact
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpenWrt-v23.05.6-Xiaomi-MIR3G
-          path: output/v23.05.6/
           if-no-files-found: error
