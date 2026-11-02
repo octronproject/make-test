@@ -12,17 +12,17 @@ jobs:
       matrix:
         include:
           - tag: v21.02.7
-            config_dir: xiaomi-mir3g-openwrt-v21.02.7
+            config_dir: xiaomi-mir3g/openwrt-v21.02.7
             container: ubuntu:20.04
             use_container: true
 
           - tag: v22.03.6
-            config_dir: xiaomi-mir3g-openwrt-v22.03.6
+            config_dir: xiaomi-mir3g/openwrt-v22.03.6
             container: ubuntu:20.04
             use_container: true
 
           - tag: v23.05.6
-            config_dir: xiaomi-mir3g-openwrt-v23.05.6
+            config_dir: xiaomi-mir3g/openwrt-v23.05.6
             container: ""
             use_container: false
 
