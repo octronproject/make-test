@@ -1,4 +1,4 @@
-name: coba 3 OpenWrt Matrix Build Xiaomi MIR3G (Safe Version)
+name: coba 3 OpenWrt Matrix Build Xiaomi MIR3G (Exact Custom Path)
 
 on:
   workflow_dispatch:
@@ -37,13 +37,11 @@ jobs:
           if [ ! -d "$SRC" ]; then
             echo "Folder konfigurasi tidak ditemukan: $SRC"
             echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "Folder konfigurasi ditemukan: $SRC"
           echo "CONFIG_FOUND=true" >> "$GITHUB_ENV"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
 
       - name: Skip build jika folder config tidak ada
         if: ${{ env.CONFIG_FOUND == 'false' }}
@@ -111,23 +109,21 @@ jobs:
             exit 1
           fi
 
-          # Copy file .config utama
-          if [ -f "$SRC/.config" ]; then
-            cp -f "$SRC/.config" openwrt/.config
-          else
-            echo "Peringatan: file .config tidak ditemukan di $SRC"
-          fi
+          # Validasi file yang dibutuhkan
+          for f in ".config" "mt7621.mk" "mt7621_xiaomi_mi-router-3g.dts"; do
+            if [ ! -f "$SRC/$f" ]; then
+              echo "File tidak ditemukan: $SRC/$f"
+              exit 1
+            fi
+          done
 
-          # Copy semua file .mk dan .dts dari folder versi
-          if [ -d "$SRC" ]; then
-            find "$SRC" -type f \( -name "*.mk" -o -name "*.dts" \) -exec cp -f {} openwrt/ \;
-          fi
+          # Buat folder target di tree OpenWrt
+          mkdir -p openwrt/target/linux/ramips/image openwrt/target/linux/ramips/dts
 
-          # Validasi: cek apakah minimal ada file yang benar-benar dikopi
-          if [ ! -f "openwrt/.config" ] && [ -z "$(find openwrt -maxdepth 1 -type f \( -name '*.mk' -o -name '*.dts' \) -print -quit)" ]; then
-            echo "Tidak ada file .config/.mk/.dts yang ditemukan di $SRC"
-            exit 1
-          fi
+          # Copy file exact ke target path OpenWrt
+          cp -f "$SRC/.config" openwrt/.config
+          cp -f "$SRC/mt7621.mk" openwrt/target/linux/ramips/image/mt7621.mk
+          cp -f "$SRC/mt7621_xiaomi_mi-router-3g.dts" openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
 
           cd openwrt
           make defconfig
