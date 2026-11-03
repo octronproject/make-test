@@ -1,188 +1,157 @@
-name: coba 1 OpenWrt Xiaomi MIR3G - Professional Build
+name: coba 1 OpenWrt Xiaomi MIR3G - Safe Matrix Build
 
 on:
   workflow_dispatch:
 
-env:
-  BUILD_ROOT: ${{ github.workspace }}
-  CCACHE_DIR: ${{ github.workspace }}/.ccache
-  CCACHE_MAXSIZE: 2G
-  DEBIAN_FRONTEND: noninteractive
-
 jobs:
-  build_v21027:
-    name: Build OpenWrt v21.02.7
+  build:
+    name: Build ${{ matrix.tag }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - tag: v21.02.7
+            config_dir: openwrt-v21.02.7
+          - tag: v22.03.6
+            config_dir: openwrt-v22.03.6
+          - tag: v23.05.6
+            config_dir: openwrt-v23.05.6
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Debug checkout metadata
+      - name: Validate source config
+        id: cfg
         shell: bash
         run: |
-          echo "=== GitHub Actions debug ==="
-          echo "branch/ref: ${GITHUB_REF:-unknown}"
-          echo "ref name: ${GITHUB_REF_NAME:-unknown}"
-          echo "sha: ${GITHUB_SHA:-unknown}"
-          echo "event_name: ${GITHUB_EVENT_NAME:-unknown}"
-          echo "repository: ${GITHUB_REPOSITORY:-unknown}"
-          echo "workspace: ${GITHUB_WORKSPACE:-unknown}"
-          echo "==== repository root ===="
-          ls -la
-          echo "==== xiaomi-mir3g tree ===="
-          if [ -d "xiaomi-mir3g" ]; then
-            find xiaomi-mir3g -maxdepth 2 -mindepth 1 | sort
-          else
-            echo "xiaomi-mir3g folder DOES NOT EXIST"
-          fi
+          set -uo pipefail
+          SRC="xiaomi-mir3g/${{ matrix.config_dir }}"
+          required_files=(".config" "mt7621.mk" "mt7621_xiaomi_mi-router-3g.dts")
+          errors=()
 
-      - name: Validate config directory exists
-        id: config_check
-        shell: bash
-        run: |
-          set -u
-          SRC="xiaomi-mir3g/openwrt-v21.02.7"
-          echo "=== validating config ==="
-          echo "BRANCH: ${GITHUB_REF_NAME:-${GITHUB_REF:-unknown}}"
-          echo "COMMIT: ${GITHUB_SHA:-unknown}"
-          echo "CHECK_PATH: $SRC"
-
-          if [ ! -d "$SRC" ]; then
-            echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-            echo "Folder konfigurasi tidak ditemukan: $SRC"
-            echo "Isi folder xiaomi-mir3g:"
-            if [ -d "xiaomi-mir3g" ]; then
-              find xiaomi-mir3g -maxdepth 2 -mindepth 1 | sort
-            else
-              echo "xiaomi-mir3g tidak ada di checkout saat ini"
-            fi
+          echo "Validating OpenWrt ${{ matrix.tag }} config at: $SRC"
+          if [[ ! -d "$SRC" ]]; then
+            echo "::warning title=Config directory missing::Cannot build ${{ matrix.tag }}: directory '$SRC' does not exist. This matrix entry will be skipped."
+            echo "valid=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Isi folder $SRC:"
-          ls -la "$SRC" || true
-
-          for f in ".config" "mt7621.mk" "mt7621_xiaomi_mi-router-3g.dts"; do
-            if [ ! -f "$SRC/$f" ]; then
-              echo "CONFIG_FOUND=false" >> "$GITHUB_ENV"
-              echo "File tidak ditemukan: $SRC/$f"
-              echo "Isi folder $SRC:"
-              ls -la "$SRC" || true
-              exit 0
+          for file in "${required_files[@]}"; do
+            if [[ ! -s "$SRC/$file" ]]; then
+              errors+=("Missing or empty required file: $SRC/$file")
+            else
+              echo "Found required file: $SRC/$file"
             fi
-            echo "FOUND: $SRC/$f"
           done
 
-          echo "CONFIG_FOUND=true" >> "$GITHUB_ENV"
-          echo "Folder dan file konfigurasi valid ditemukan di $SRC"
-
-      - name: Skip if config invalid
-        if: env.CONFIG_FOUND == 'false'
-        run: echo "Skip build v21.02.7 karena konfigurasi tidak valid."
-
-      - name: Install system dependencies
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          if [ "$(id -u)" -ne 0 ]; then
-            sudo apt-get update
-            sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-              gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
-              python3 python3-setuptools ccache
-          else
-            apt-get update
-            apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-              gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
-              python3 python3-setuptools ccache
+          if [[ -s "$SRC/.config" ]]; then
+            if ! grep -qx 'CONFIG_TARGET_ramips=y' "$SRC/.config"; then
+              errors+=(".config does not enable CONFIG_TARGET_ramips=y")
+            fi
+            if ! grep -qx 'CONFIG_TARGET_ramips_mt7621=y' "$SRC/.config"; then
+              errors+=(".config does not enable CONFIG_TARGET_ramips_mt7621=y")
+            fi
+            if ! grep -qx 'CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y' "$SRC/.config"; then
+              errors+=(".config does not select the Xiaomi Mi Router 3G target device")
+            fi
           fi
 
-      - name: Cache ccache
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.CCACHE_DIR }}
-            openwrt/.ccache
-          key: openwrt-v21.02.7-ccache-${{ runner.os }}-${{ github.run_id }}
-          restore-keys: |
-            openwrt-v21.02.7-ccache-${{ runner.os }}-
-            openwrt-v21.02.7-ccache-
+          if (( ${#errors[@]} > 0 )); then
+            echo "::warning title=Invalid config::${{ matrix.tag }} config validation failed; this matrix entry will be skipped. See the messages below."
+            printf '::error::%s\n' "${errors[@]}"
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-      - name: Cache OpenWrt downloads
-        if: env.CONFIG_FOUND == 'true'
-        uses: actions/cache@v4
-        with:
-          path: |
-            openwrt/dl
-            openwrt/.config
-          key: openwrt-v21.02.7-downloads-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            openwrt-v21.02.7-downloads-${{ runner.os }}-
+          echo "Source config validation passed for ${{ matrix.tag }}."
+          echo "valid=true" >> "$GITHUB_OUTPUT"
 
-      - name: Clone OpenWrt source
-        if: env.CONFIG_FOUND == 'true'
+      - name: Report skipped config
+        if: steps.cfg.outputs.valid != 'true'
+        run: echo "Skipping ${{ matrix.tag }} because its source config directory or required config files/settings are missing or invalid. See the Validate source config step for details."
+
+      - name: Install build dependencies
+        if: steps.cfg.outputs.valid == 'true'
         shell: bash
         run: |
-          git clone --depth 1 --branch v21.02.7 https://github.com/openwrt/openwrt.git openwrt
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext git libncurses5-dev libssl-dev rsync unzip zlib1g-dev file wget \
+            python3 python3-setuptools ccache
 
-      - name: Apply custom MIR3G config
-        if: env.CONFIG_FOUND == 'true'
+      - name: Restore ccache
+        if: steps.cfg.outputs.valid == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-openwrt-${{ matrix.tag }}-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-openwrt-${{ matrix.tag }}-${{ runner.os }}-
+
+      - name: Clone OpenWrt
+        if: steps.cfg.outputs.valid == 'true'
         shell: bash
         run: |
-          SRC="xiaomi-mir3g/openwrt-v21.02.7"
+          git clone --depth 1 --branch ${{ matrix.tag }} https://github.com/openwrt/openwrt.git openwrt
 
+      - name: Apply and validate OpenWrt config
+        if: steps.cfg.outputs.valid == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="xiaomi-mir3g/${{ matrix.config_dir }}"
           mkdir -p openwrt/target/linux/ramips/image openwrt/target/linux/ramips/dts
 
           cp -f "$SRC/.config" openwrt/.config
           cp -f "$SRC/mt7621.mk" openwrt/target/linux/ramips/image/mt7621.mk
           cp -f "$SRC/mt7621_xiaomi_mi-router-3g.dts" openwrt/target/linux/ramips/dts/mt7621_xiaomi_mi-router-3g.dts
+          echo "Copied $SRC/.config to openwrt/.config"
+          cmp -s "$SRC/.config" openwrt/.config || { echo "Copied .config does not match source config"; exit 1; }
+          echo "Verified .config copy."
 
-          cd openwrt
-          make defconfig
+          for pkg in kmod-fs-nfs-common kmod-fs-nfs-common-rpcsec kmod-fs-nfsd; do
+            if grep -q "^CONFIG_PACKAGE_${pkg}=" openwrt/.config; then
+              sed -i "/^CONFIG_PACKAGE_${pkg}=/d" openwrt/.config
+              echo "Removed unused CONFIG_PACKAGE_${pkg} selection."
+            else
+              echo "No NFS selection found for ${pkg}."
+            fi
+          done
 
-      - name: Update feeds
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
+          make defconfig
 
-      - name: Download sources
-        if: env.CONFIG_FOUND == 'true'
+          echo "Validating resolved OpenWrt config after make defconfig..."
+          grep -qx 'CONFIG_TARGET_ramips=y' .config || { echo "Invalid resolved config: CONFIG_TARGET_ramips=y is absent"; exit 1; }
+          grep -qx 'CONFIG_TARGET_ramips_mt7621=y' .config || { echo "Invalid resolved config: CONFIG_TARGET_ramips_mt7621=y is absent"; exit 1; }
+          grep -qx 'CONFIG_TARGET_ramips_mt7621_DEVICE_xiaomi_mi-router-3g=y' .config || { echo "Invalid resolved config: Xiaomi Mi Router 3G target is not selected"; exit 1; }
+
+          if grep -Eq '^CONFIG_PACKAGE_kmod-fs-nfs-(common|common-rpcsec|nfsd)=(y|m)$' .config; then
+            echo "Invalid resolved config: NFS packages remain selected, but NFS is not needed."
+            grep -E '^CONFIG_PACKAGE_kmod-fs-nfs-(common|common-rpcsec|nfsd)=' .config
+            exit 1
+          fi
+          echo "Resolved config validation passed; unused NFS packages are not selected."
+
+      - name: Build
+        if: steps.cfg.outputs.valid == 'true'
         shell: bash
         run: |
           cd openwrt
-          make download -j"$(nproc)"
-          find dl -size -1024c -exec ls -l {} \; 2>/dev/null || true
-          find dl -size -1024c -exec rm -f {} \; 2>/dev/null || true
-
-      - name: Compile firmware
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        env:
-          PATH: /usr/lib/ccache:$PATH
-        run: |
-          cd openwrt
-          export CCACHE_DIR="${{ env.CCACHE_DIR }}"
           export PATH="/usr/lib/ccache:$PATH"
           ccache -z
+          make download -j"$(nproc)"
           make -j"$(nproc)" FORCE_UNSAFE_CONFIGURE=1 || make -j1 V=s FORCE_UNSAFE_CONFIGURE=1
           ccache -s
 
-      - name: Collect build artifacts
-        if: env.CONFIG_FOUND == 'true'
-        shell: bash
-        run: |
-          mkdir -p output/v21.02.7
-          find openwrt/bin/targets -type f -exec cp -f {} output/v21.02.7/ \;
-          echo "Artifacts:"
-          ls -lh output/v21.02.7
-
       - name: Upload artifact
-        if: env.CONFIG_FOUND == 'true'
+        if: steps.cfg.outputs.valid == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt-v21.02.7-Xiaomi-MIR3G
-          path: output/v21.02.7/
+          name: OpenWrt-${{ matrix.tag }}-MIR3G
+          path: openwrt/bin/targets/
           if-no-files-found: error
