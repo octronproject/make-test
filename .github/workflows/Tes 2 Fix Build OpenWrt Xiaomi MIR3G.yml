@@ -1,4 +1,4 @@
-name: Tes 1 Fix Build OpenWrt Xiaomi MIR3G
+name: Tes 2 Fix Build OpenWrt Xiaomi MIR3G
 
 on:
   workflow_dispatch:
