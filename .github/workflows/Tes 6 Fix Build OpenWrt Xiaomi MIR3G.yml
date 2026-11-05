@@ -61,7 +61,7 @@ jobs:
         shell: bash
         run: |
           # 1. Kloning cepat menggunakan nama tag dinamis dari matrix
-          git clone --depth 1 --branch "${{ matrix.tag }}" https://github.com openwrt
+          git clone --depth 1 --branch "${{ matrix.tag }}" https://github.com/openwrt/openwrt.git openwrt
           cd openwrt
           
           # 2. Ambil metadata tag secara utuh untuk menepis error "is not a commit!"
