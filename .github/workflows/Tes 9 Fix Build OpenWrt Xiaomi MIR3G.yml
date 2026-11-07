@@ -1,4 +1,4 @@
-name: Tes 8 Fix Build OpenWrt Xiaomi MIR3G
+name: Tes 9 Fix Build OpenWrt Xiaomi MIR3G
 
 on:
   workflow_dispatch:
@@ -87,18 +87,19 @@ jobs:
           # Salin konfigurasi dasar
           cp -f "$SRC/.config" openwrt/.config
 
-          # Hapus konfigurasi lama terkait NFS, WPAD, uhttpd, dan nginx agar tidak konflik
+                    # Hapus konfigurasi lama terkait NFS, WPAD, uhttpd, nginx, dan WolfSSL agar tidak konflik
           sed -i \
             -e '/CONFIG_PACKAGE_kmod-fs-nfs/d' \
             -e '/CONFIG_PACKAGE_wpad/d' \
-            -e '/CONFIG_PACKAGE_wpad-wolfssl/d' \
-            -e '/CONFIG_PACKAGE_wpad-openssl/d' \
+            -e '/CONFIG_PACKAGE_wolfssl/d' \
+            -e '/libustream-wolfssl/d' \
+            -e '/wpad-basic-wolfssl/d' \
             -e '/CONFIG_PACKAGE_uhttpd/d' \
             -e '/CONFIG_PACKAGE_luci-ssl-nginx/d' \
             -e '/CONFIG_PACKAGE_nginx/d' \
             openwrt/.config
 
-          # Suntikkan konfigurasi kustom baru
+          # Suntikkan konfigurasi kustom baru (Murni OpenSSL)
           cat <<'EOF' >> openwrt/.config
           # Matikan modul NFS
           # CONFIG_PACKAGE_kmod-fs-nfs is not set
@@ -106,9 +107,15 @@ jobs:
           # CONFIG_PACKAGE_kmod-fs-nfs-common-rpcsec is not set
           # CONFIG_PACKAGE_kmod-fs-nfsd is not set
 
-          # Paksa menggunakan WPAD OpenSSL Full (Matikan WolfSSL)
+          # Paksa matikan WolfSSL secara menyeluruh
+          # CONFIG_PACKAGE_libwolfssl is not set
+          # CONFIG_PACKAGE_libustream-wolfssl is not set
           # CONFIG_PACKAGE_wpad-wolfssl is not set
           # CONFIG_PACKAGE_wpad-basic-wolfssl is not set
+
+          # Aktifkan OpenSSL dan paket pendukungnya
+          CONFIG_PACKAGE_libopenssl=y
+          CONFIG_PACKAGE_libustream-openssl=y
           CONFIG_PACKAGE_wpad-openssl=y
 
           # Matikan Web Server uhttpd bawaan
