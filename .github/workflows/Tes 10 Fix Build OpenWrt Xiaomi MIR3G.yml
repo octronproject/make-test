@@ -128,7 +128,7 @@ jobs:
           # Aktifkan OpenSSL dan paket pendukungnya
           CONFIG_PACKAGE_libopenssl=y
           CONFIG_PACKAGE_libustream-openssl=y
-          CONFIG_PACKAGE_wpad-openssl=y
+          CONFIG_PACKAGE_wpad-basic-openssl=y
 
           # Matikan Web Server uhttpd bawaan
           # CONFIG_PACKAGE_uhttpd is not set
