@@ -46,7 +46,7 @@ jobs:
         run: |
           su - builder -c "
             cd '$GITHUB_WORKSPACE'
-            git clone --depth 1 --branch v22.03.7 https://github.com openwrt.git
+            git clone --depth 1 --branch v22.03.7 https://github.com/openwrt/openwrt.git openwrt
             cd openwrt
             ./scripts/feeds update -a
             ./scripts/feeds install -a
