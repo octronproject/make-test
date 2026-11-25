@@ -1,0 +1,200 @@
+name: Tes1 Build OpenWrt 22.03 TL-MR3420 v2 (16/64 Generic)
+
+# HANYA berjalan saat diklik manual di tab Actions (tidak otomatis saat git push)
+on:
+  workflow_dispatch:
+
+# Mempermudah pembatalan (Cancel/Stop) dan mencegah double-build bersamaan
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:22.04
+      options: --user root # Hanya dipakai di awal untuk apt-get dan membuat user non-root
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+
+    steps:
+      - name: Install Dependencies & Create Non-Root User
+        run: |
+          apt-get update
+          apt-get install -y sudo ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
+          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
+          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
+          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python2.7 python3 python3-pyelftools \
+          libpython3-dev qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \
+          vim wget xmlto xxd zlib1g-dev ca-certificates
+
+          # Buat user biasa (non-root) bernama 'builder'
+          useradd -m -s /bin/bash builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Workspace Permissions for Non-Root User
+        run: |
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Clone OpenWrt v22.03.7 Source (Non-Root)
+        run: |
+          su - builder -c "
+            cd '$GITHUB_WORKSPACE'
+            git clone --depth 1 --branch v22.03.7 https://github.com openwrt
+            cd openwrt
+            ./scripts/feeds update -a
+            ./scripts/feeds install -a
+          "
+
+      - name: Patch DTS (16MB Flash @ 45MHz) & Move Target to Generic (Non-Root)
+        run: |
+          su - builder -c "
+            cd '$GITHUB_WORKSPACE/openwrt'
+
+            # 1. Ubah layout partisi DTS TL-MR3420 v2 menjadi 16MB dengan SPI 45MHz
+            cat << 'EOF' > target/linux/ath79/dts/ar9341_tplink_tl-mr3420-v2.dts
+          // SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+          #include \"ar9341_tplink_tl-wr841-v8.dtsi\"
+
+          / {
+          	compatible = \"tplink,tl-mr3420-v2\", \"qca,ar9341\";
+          	model = \"TP-Link TL-MR3420 v2\";
+          };
+
+          &usb_phy {
+          	status = \"okay\";
+          };
+
+          &usb {
+          	status = \"okay\";
+          };
+
+          &gpio {
+          	status = \"okay\";
+          };
+
+          &leds {
+          	led_usb {
+          		label = \"green:usb\";
+          		gpios = <&gpio 11 GPIO_ACTIVE_HIGH>;
+          	};
+          };
+
+          &gpio_export {
+          	gpio_usb_power {
+          		gpio-export,name = \"tp-link:power:usb\";
+          		gpio-export,output = <1>;
+          		gpios = <&gpio 4 GPIO_ACTIVE_HIGH>;
+          	};
+          };
+
+          &spi {
+          	status = \"okay\";
+
+          	flash@0 {
+          		compatible = \"jedec,spi-nor\";
+          		reg = <0>;
+          		spi-max-frequency = <45000000>;
+
+          		partitions {
+          			compatible = \"fixed-partitions\";
+          			#address-cells = <1>;
+          			#size-cells = <1>;
+
+          			uboot: partition@0 {
+          				label = \"u-boot\";
+          				reg = <0x000000 0x020000>;
+          				read-only;
+          			};
+
+          			firmware: partition@20000 {
+          				compatible = \"tplink,firmware\";
+          				label = \"firmware\";
+          				reg = <0x020000 0xfd0000>;
+          			};
+
+          			art: partition@ff0000 {
+          				label = \"art\";
+          				reg = <0xff0000 0x010000>;
+          				read-only;
+          			};
+          		};
+          	};
+          };
+          EOF
+
+            # 2. Hapus definisi tl-mr3420-v2 dari subtarget tiny
+            sed -i '/define Device\/tplink_tl-mr3420-v2/,/TARGET_DEVICES += tplink_tl-mr3420-v2/d' target/linux/ath79/image/tiny-tp-link.mk
+
+            # 3. Tambahkan definisi tl-mr3420-v2 ke subtarget generic dengan template 16MB
+            cat << 'EOF' >> target/linux/ath79/image/generic-tp-link.mk
+
+          define Device/tplink_tl-mr3420-v2
+            \$(Device/tplink-16mlzma)
+            SOC := ar9341
+            DEVICE_MODEL := TL-MR3420
+            DEVICE_VARIANT := v2
+            DEVICE_PACKAGES := kmod-usb2 kmod-usb-ledtrig-usbport
+            TPLINK_HWID := 0x34200002
+          endef
+          TARGET_DEVICES += tplink_tl-mr3420-v2
+          EOF
+          "
+
+      - name: Load & Lock Custom .config (Non-Root)
+        run: |
+          su - builder -c "
+            cd '$GITHUB_WORKSPACE/openwrt'
+
+            # 1. Validasi keberadaan file .config kustom Anda
+            if [ ! -f '$GITHUB_WORKSPACE/tl-mr3420v2/openwrt-22/.config' ]; then
+              echo 'Error: File tl-mr3420v2/openwrt-22/.config tidak ditemukan!'
+              exit 1
+            fi
+
+            # 2. Salin .config dari folder tl-mr3420v2/openwrt-22/ ke folder openwrt
+            cp -f '$GITHUB_WORKSPACE/tl-mr3420v2/openwrt-22/.config' .config
+
+            # 3. Bersihkan sisa target tiny jika ada, dan pastikan target mengarah ke ath79 generic
+            sed -i '/CONFIG_TARGET_ath79_tiny/d' .config
+            echo 'CONFIG_TARGET_ath79=y' >> .config
+            echo 'CONFIG_TARGET_ath79_generic=y' >> .config
+            echo 'CONFIG_TARGET_ath79_generic_DEVICE_tplink_tl-mr3420-v2=y' >> .config
+
+            # 4. Simpan salinan asli untuk mengunci pilihan paket Anda sebelum defconfig
+            cp .config .config.orig
+
+            # 5. Lengkapi dependensi internal lalu timpa kembali dengan pilihan asli Anda
+            make defconfig
+            cat .config.orig >> .config
+            make olddefconfig
+          "
+
+      - name: Download Packages (Non-Root)
+        run: |
+          su - builder -c "
+            cd '$GITHUB_WORKSPACE/openwrt'
+            make download -j\$(nproc)
+            find dl -size -1024c -exec ls -l {} \;
+            find dl -size -1024c -exec rm -f {} \;
+          "
+
+      - name: Compile Firmware (Non-Root)
+        run: |
+          su - builder -c "
+            cd '$GITHUB_WORKSPACE/openwrt'
+            make -j\$(nproc) || make -j1 V=s
+          "
+
+      - name: Upload Firmware Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenWrt-22.03.7-TL-MR3420-v2-16M-Generic
+          path: openwrt/bin/targets/ath79/generic/*tplink_tl-mr3420-v2*
