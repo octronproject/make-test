@@ -82,17 +82,17 @@ jobs:
 
           if "define Device/tplink_tl-mr3420-v2" not in text:
               text += """
-define Device/tplink_tl-mr3420-v2
-  $(Device/tplink-16mlzma)
-  SOC := ar9341
-  DEVICE_MODEL := TL-MR3420
-  DEVICE_VARIANT := v2
-  DEVICE_PACKAGES := kmod-usb2 kmod-usb-ledtrig-usbport
-  TPLINK_HWID := 0x34200002
-  SUPPORTED_DEVICES += tl-mr3420-v2
-endef
-TARGET_DEVICES += tplink_tl-mr3420-v2
-"""
+          define Device/tplink_tl-mr3420-v2
+          $(Device/tplink-16mlzma)
+          SOC := ar9341
+          DEVICE_MODEL := TL-MR3420
+          DEVICE_VARIANT := v2
+          DEVICE_PACKAGES := kmod-usb2 kmod-usb-ledtrig-usbport
+          TPLINK_HWID := 0x34200002
+          SUPPORTED_DEVICES += tl-mr3420-v2
+          endef
+          TARGET_DEVICES += tplink_tl-mr3420-v2
+          """
               generic.write_text(text)
 
           # Keep the upstream DTS and its existing device settings. Only enlarge
